@@ -3,18 +3,16 @@ package gay.spiders
 import dev.kord.common.entity.Snowflake
 import dev.kord.core.Kord
 import dev.kord.core.behavior.interaction.respondEphemeral
-import dev.kord.core.entity.Message
 import dev.kord.core.entity.interaction.ApplicationCommandInteraction
 import dev.kord.core.event.gateway.ReadyEvent
 import dev.kord.core.event.interaction.InteractionCreateEvent
-import dev.kord.core.event.message.MessageCreateEvent
 import dev.kord.core.on
 import dev.kord.gateway.Intent
 import dev.kord.gateway.PrivilegedIntent
 import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 
-private val logger = LoggerFactory.getLogger("gay.spiders.OmnipresentKontrolObject")
+private val logger = LoggerFactory.getLogger("gay.spiders.OKO")
 
 fun main() = runBlocking {
     logger.info("Bot is starting...")
@@ -45,7 +43,9 @@ fun main() = runBlocking {
     kord.on<InteractionCreateEvent> {
         val interaction = this as? ApplicationCommandInteraction ?: return@on
 
-        when (interaction.invokedCommandName) {
+        logger.info("Received command: /${invokedCommandName}")
+
+        when (invokedCommandName) {
             "balance" -> {
                 interaction.respondEphemeral {
                     content = "You have no funds currently."
