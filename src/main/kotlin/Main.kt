@@ -45,6 +45,6 @@ suspend fun onMessage(message: Message) {
 
     if (message.content == "!test") {
         logger.debug("Received !ping from ${message.author?.tag}")
-        message.channel.createMessage("Test successful.")
+        message.channel.createMessage("Test successful!")
     }
 }
