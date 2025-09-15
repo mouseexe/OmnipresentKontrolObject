@@ -43,8 +43,8 @@ fun main() = runBlocking {
 suspend fun onMessage(message: Message) {
     if (message.author?.isBot == true) return
 
-    if (message.content == "!ping") {
+    if (message.content == "!test") {
         logger.debug("Received !ping from ${message.author?.tag}")
-        message.channel.createMessage("Pong! 🏓")
+        message.channel.createMessage("Test successful.")
     }
 }
