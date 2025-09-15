@@ -1,4 +1,4 @@
-FROM gradle:7.6-jdk11 AS builder
+FROM gradle:8.3-jdk11 AS builder
 WORKDIR /home/gradle/src
 COPY . .
 RUN gradle shadowJar --no-daemon
