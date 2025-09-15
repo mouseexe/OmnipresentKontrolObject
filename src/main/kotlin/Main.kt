@@ -3,8 +3,8 @@ package gay.spiders
 import dev.kord.common.entity.Snowflake
 import dev.kord.core.Kord
 import dev.kord.core.behavior.interaction.respondEphemeral
-import dev.kord.core.entity.interaction.ApplicationCommandInteraction
 import dev.kord.core.event.gateway.ReadyEvent
+import dev.kord.core.event.interaction.GuildChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.InteractionCreateEvent
 import dev.kord.core.on
 import dev.kord.gateway.Intent
@@ -24,7 +24,6 @@ fun main() = runBlocking {
         println("Error: DISCORD_TOKEN environment variable not set.")
         return@runBlocking
     }
-
     val kord = Kord(token)
 
     kord.on<ReadyEvent> {
@@ -33,22 +32,88 @@ fun main() = runBlocking {
     }
 
     logger.info("Registering slash commands...")
-//    kord.createGlobalApplicationCommands {
     kord.createGuildApplicationCommands(testServer) {
-        input("balance", "Check your current balances.")
+        Actions.entries.forEach {
+            input(it.name.lowercase(), it.description)
+        }
     }.collect { command ->
         logger.info("Successfully registered guild command: /${command.name}")
     }
+//    kord.createGlobalApplicationCommands {
+//        Actions.entries.forEach {
+//            input(it.name.lowercase(), it.description)
+//        }
+//    }.collect { command ->
+//        logger.info("Successfully registered global command: /${command.name}")
+//    }
+
+    val players = mutableListOf(
+        Player(
+            id = "test1",
+            credits = 100,
+            tokens = 100,
+            shares = 100,
+            factions = emptyList()
+        ),
+        Player(
+            id = "test2",
+            credits = 100,
+            tokens = 100,
+            shares = 100,
+            factions = emptyList()
+        )
+    )
 
     kord.on<InteractionCreateEvent> {
-        val interaction = this as? ApplicationCommandInteraction ?: return@on
+        val interaction = (this as? GuildChatInputCommandInteractionCreateEvent)?.interaction ?: return@on
+        val id = interaction.data.message.value?.author?.username.orEmpty()
+        val player = players.firstOrNull { it.id == id }
 
-        logger.info("Received command: /${invokedCommandName}")
+        logger.info("Received command: /${interaction.invokedCommandName}")
 
-        when (invokedCommandName) {
-            "balance" -> {
-                interaction.respondEphemeral {
-                    content = "You have no funds currently."
+        when (Actions.get(interaction.invokedCommandName)) {
+            Actions.REGISTER -> {
+                if (player != null) {
+                    interaction.respondEphemeral {
+                        content = "You are already registered."
+                    }
+                } else {
+                    players += Player(
+                        id = id,
+                        credits = 100,
+                        tokens = 100,
+                        shares = 100,
+                        factions = emptyList()
+                    )
+                    interaction.respondEphemeral {
+                        content = "You have been registered."
+                    }
+                }
+            }
+
+            Actions.BALANCE -> {
+                if (player != null) {
+                    interaction.respondEphemeral {
+                        content = "Credits: ${player.credits}, Tokens: ${player.tokens}, Shares: ${player.shares}"
+                    }
+                } else {
+                    interaction.respondEphemeral {
+                        content = "You need to register first!"
+                    }
+                }
+            }
+
+            Actions.RENT -> {
+                if (player != null) {
+                    val credits = player.credits - 1
+                    players.replaceAll { if (it.id == id) it.copy(credits = credits) else it }
+                    interaction.respondEphemeral {
+                        content = "Rent paid."
+                    }
+                } else {
+                    interaction.respondEphemeral {
+                        content = "You need to register first!"
+                    }
                 }
             }
         }
