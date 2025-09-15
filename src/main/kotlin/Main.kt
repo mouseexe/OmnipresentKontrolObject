@@ -1,8 +1,12 @@
 package gay.spiders
 
+import dev.kord.common.entity.Snowflake
 import dev.kord.core.Kord
+import dev.kord.core.behavior.interaction.respondEphemeral
 import dev.kord.core.entity.Message
+import dev.kord.core.entity.interaction.ApplicationCommandInteraction
 import dev.kord.core.event.gateway.ReadyEvent
+import dev.kord.core.event.interaction.InteractionCreateEvent
 import dev.kord.core.event.message.MessageCreateEvent
 import dev.kord.core.on
 import dev.kord.gateway.Intent
@@ -16,6 +20,8 @@ fun main() = runBlocking {
     logger.info("Bot is starting...")
 
     val token = System.getenv("DISCORD_TOKEN")
+    val maushold = System.getenv("MAUSHOLD")
+    val testServer = Snowflake(maushold)
     if (token == null) {
         println("Error: DISCORD_TOKEN environment variable not set.")
         return@runBlocking
@@ -28,8 +34,24 @@ fun main() = runBlocking {
         logger.info("Connected to ${guilds.count()} guilds.")
     }
 
-    kord.on<MessageCreateEvent> {
-        onMessage(message)
+    logger.info("Registering slash commands...")
+//    kord.createGlobalApplicationCommands {
+    kord.createGuildApplicationCommands(testServer) {
+        input("balance", "Check your current balances.")
+    }.collect { command ->
+        logger.info("Successfully registered guild command: /${command.name}")
+    }
+
+    kord.on<InteractionCreateEvent> {
+        val interaction = this as? ApplicationCommandInteraction ?: return@on
+
+        when (interaction.invokedCommandName) {
+            "balance" -> {
+                interaction.respondEphemeral {
+                    content = "You have no funds currently."
+                }
+            }
+        }
     }
 
     kord.login {
@@ -38,13 +60,4 @@ fun main() = runBlocking {
     }
 
     logger.info("Bot is shutting down.")
-}
-
-suspend fun onMessage(message: Message) {
-    if (message.author?.isBot == true) return
-
-    if (message.content == "!test") {
-        logger.debug("Received !ping from ${message.author?.tag}")
-        message.channel.createMessage("Test successful!")
-    }
 }
