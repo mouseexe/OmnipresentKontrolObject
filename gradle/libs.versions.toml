@@ -1,0 +1,28 @@
+[versions]
+kotlin = "2.2.0"
+shadow = "8.1.1"
+kord = "0.15.0"
+logback = "1.5.13"
+exposed = "0.52.0"
+postgresql = "42.7.3"
+hikaricp = "5.1.0"
+
+[libraries]
+kord-core = { group = "dev.kord", name = "kord-core", version.ref = "kord" }
+logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
+
+exposed-core = { group = "org.jetbrains.exposed", name = "exposed-core", version.ref = "exposed" }
+exposed-dao = { group = "org.jetbrains.exposed", name = "exposed-dao", version.ref = "exposed" }
+exposed-jdbc = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version.ref = "exposed" }
+
+postgresql-jdbc = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
+hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
+
+kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+shadow = { id = "com.github.johnrengelman.shadow", version.ref = "shadow" }
+
+[bundles]
+exposed = ["exposed-core", "exposed-dao", "exposed-jdbc"]

@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.2.0"
+    alias(libs.plugins.kotlin.jvm)
     application
-    id("com.github.johnrengelman.shadow") version "8.1.1"
+    alias(libs.plugins.shadow)
 }
 
 group = "gay.spiders"
@@ -12,15 +12,19 @@ repositories {
 }
 
 dependencies {
-    testImplementation(kotlin("test"))
-    implementation("dev.kord:kord-core:0.13.1")
-    implementation("ch.qos.logback:logback-classic:1.5.13")
+    testImplementation(libs.kotlin.test)
+    implementation(libs.kord.core)
+    implementation(libs.logback.classic)
+    implementation(libs.bundles.exposed)
+    implementation(libs.postgresql.jdbc)
+    implementation(libs.hikaricp)
 }
 
 tasks.test {
     useJUnitPlatform()
 }
 kotlin {
+    // Requires Java 11 for OKD4
     jvmToolchain(11)
 }
 
