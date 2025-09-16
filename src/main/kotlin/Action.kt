@@ -24,6 +24,18 @@ enum class Action(val description: String, val params: List<Param> = emptyList()
             )
         )
     ),
+    ADMIN(
+        description = "Moderator administrative tasks",
+        params = listOf(
+            Param(
+                name = "subcommand",
+                description = "Command to run.",
+                type = Param.Type.STRING,
+                options = Admin.entries.map { it.name.lowercase() },
+                required = true
+            )
+        )
+    ),
     TRANSFER(
         description = "Transfer funds.",
         params = listOf(
@@ -51,6 +63,14 @@ enum class Action(val description: String, val params: List<Param> = emptyList()
 
     companion object {
         fun get(action: String) = entries.first { it.name.lowercase() == action }
+    }
+
+    enum class Admin {
+        FORWARD;
+
+        companion object {
+            fun get(admin: String) = Admin.entries.first { it.name.lowercase() == admin }
+        }
     }
 }
 

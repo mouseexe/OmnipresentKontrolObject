@@ -6,17 +6,17 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 
 object Users : Table() {
-    val discordId = long("discord_id")
+    val id = integer("id").autoIncrement()
+    val discordId = long("discord_id").uniqueIndex()
     val username = varchar("username", 32)
     val credits = integer("credits").default(0)
     val tokens = integer("tokens").default(0)
     val shares = integer("shares").default(0)
-    val factions = varchar("factions", 255).default("").nullable()
-    val lifestyle = varchar("lifestyle", 32).default("Citizen")
+    val factions = varchar("factions", 255).nullable()
+    val lifestyle = varchar("lifestyle", 50).default("Citizen")
     val alive = bool("alive").default(true)
 
-
-    override val primaryKey = PrimaryKey(discordId)
+    override val primaryKey = PrimaryKey(id)
 
     fun Users.getPlayer(discordId: Long): Player? {
         var player: Player? = null

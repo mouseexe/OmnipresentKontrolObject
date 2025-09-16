@@ -11,6 +11,7 @@ import dev.kord.core.on
 import dev.kord.gateway.Intent
 import dev.kord.gateway.PrivilegedIntent
 import dev.kord.rest.builder.interaction.*
+import gay.spiders.Action.Admin
 import gay.spiders.Users.getPlayer
 import gay.spiders.Users.toPlayer
 import kotlinx.coroutines.runBlocking
@@ -36,30 +37,6 @@ fun main() = runBlocking {
         return@runBlocking
     }
     val kord = Kord(token)
-
-    this.scheduleDailyTask(hour = 9, minute = 0) {
-        transaction {
-            Users.selectAll().where { Users.alive eq true }.forEach {
-                val player = it.toPlayer()
-                var balance = player.credits
-                Users.update({ Users.discordId eq player.userId }) { user ->
-                    balance -= 10 // 02 fee
-                    if (balance >= player.lifestyle.cost) {
-                        balance -= player.lifestyle.cost
-                    } else {
-                        Player.Lifestyle.affordableLifestyle(balance)?.let { lifestyle ->
-                            balance -= lifestyle.cost
-                            user[Users.lifestyle] = lifestyle.name
-                        } ?: run {
-                            user[Users.alive] = false
-                            // TODO: inform a user if they die?
-                        }
-                    }
-                    user[Users.credits] = balance
-                }
-            }
-        }
-    }
 
     kord.on<ReadyEvent> {
         logger.info("Logged in as ${self.tag}")
@@ -224,6 +201,40 @@ fun main() = runBlocking {
                         }
                         interaction.respondEphemeral {
                             content = "You have adopted a ${lifestyle.name} lifestyle."
+                        }
+                    }
+                }
+            }
+
+            Action.ADMIN -> {
+                val (commandParam) = action.params
+                val commandName = interaction.command.strings[commandParam.name]!!
+                val command = Admin.get(commandName)
+                when (command) {
+                    Admin.FORWARD -> {
+                        interaction.respondEphemeral {
+                            content = "Day progressed."
+                        }
+                        transaction {
+                            Users.selectAll().where { Users.alive eq true }.forEach {
+                                val player = it.toPlayer()
+                                var balance = player.credits
+                                Users.update({ Users.discordId eq player.userId }) { user ->
+                                    balance -= 10 // 02 fee
+                                    if (balance >= player.lifestyle.cost) {
+                                        balance -= player.lifestyle.cost
+                                    } else {
+                                        Player.Lifestyle.affordableLifestyle(balance)?.let { lifestyle ->
+                                            balance -= lifestyle.cost
+                                            user[Users.lifestyle] = lifestyle.name
+                                        } ?: run {
+                                            user[Users.alive] = false
+                                            // TODO: inform a user if they die?
+                                        }
+                                    }
+                                    user[Users.credits] = balance
+                                }
+                            }
                         }
                     }
                 }
