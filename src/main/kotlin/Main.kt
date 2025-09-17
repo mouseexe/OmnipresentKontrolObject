@@ -4,6 +4,7 @@ import dev.kord.common.annotation.KordExperimental
 import dev.kord.common.entity.Snowflake
 import dev.kord.core.Kord
 import dev.kord.core.behavior.interaction.respondEphemeral
+import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.event.gateway.ReadyEvent
 import dev.kord.core.event.interaction.ChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.InteractionCreateEvent
@@ -212,9 +213,7 @@ fun main() = runBlocking {
                 val command = Admin.get(commandName)
                 when (command) {
                     Admin.FORWARD -> {
-                        interaction.respondEphemeral {
-                            content = "Day progressed."
-                        }
+                        val response = interaction.deferEphemeralResponse()
                         transaction {
                             Users.selectAll().where { Users.alive eq true }.forEach {
                                 val player = it.toPlayer()
@@ -236,6 +235,7 @@ fun main() = runBlocking {
                                 }
                             }
                         }
+                        response.respond { content = "Day progressed." }
                     }
                 }
             }
