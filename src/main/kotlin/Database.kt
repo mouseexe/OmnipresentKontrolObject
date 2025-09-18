@@ -2,12 +2,10 @@ package gay.spiders
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import gay.spiders.data.Users
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.slf4j.LoggerFactory
-
-private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
 
 object DatabaseFactory {
 

@@ -11,15 +11,13 @@ import dev.kord.core.event.interaction.InteractionCreateEvent
 import dev.kord.core.on
 import dev.kord.gateway.Intent
 import dev.kord.gateway.PrivilegedIntent
-import dev.kord.rest.builder.interaction.*
-import gay.spiders.Action.Admin
-import gay.spiders.Users.getPlayer
-import gay.spiders.Users.toPlayer
+import gay.spiders.data.*
+import gay.spiders.data.Action.Admin
+import gay.spiders.data.Users.getPlayer
+import gay.spiders.data.Users.toPlayer
 import kotlinx.coroutines.runBlocking
-import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.transactions.transaction
-import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
 
 private val logger = LoggerFactory.getLogger("gay.spiders.OKO")
@@ -46,45 +44,7 @@ fun main() = runBlocking {
 
     kord.createGuildApplicationCommands(testServer) {
         Action.entries.forEach {
-            input(it.name.lowercase(), it.description) {
-                it.params.forEach { param ->
-                    when (param.type) {
-                        Param.Type.STRING -> string(param.name, param.description) {
-                            required = param.required
-                            param.options?.let {
-                                param.options.forEach { option ->
-                                    choice(option.toString(), option.toString())
-                                }
-                            }
-                        }
-
-                        Param.Type.INTEGER -> integer(param.name, param.description) {
-                            required = param.required
-                            param.options?.let {
-                                param.options.forEach { option ->
-                                    choice(option.toString(), option.toString().toLong())
-                                }
-                            }
-                        }
-
-                        Param.Type.BOOLEAN -> boolean(param.name, param.description) {
-                            required = param.required
-                        }
-
-                        Param.Type.USER -> user(param.name, param.description) {
-                            required = param.required
-                        }
-
-                        Param.Type.CHANNEL -> channel(param.name, param.description) {
-                            required = param.required
-                        }
-
-                        Param.Type.ROLE -> role(param.name, param.description) {
-                            required = param.required
-                        }
-                    }
-                }
-            }
+            input(it.name.lowercase(), it.description) { addParameters(it.params) }
         }
     }.collect { command ->
         logger.info("Successfully registered guild command: /${command.name}")
@@ -92,19 +52,47 @@ fun main() = runBlocking {
 
     kord.on<InteractionCreateEvent> {
         val interaction = (this as? ChatInputCommandInteractionCreateEvent)?.interaction ?: return@on
-        val user = interaction.user.data
-        val player = Users.getPlayer(user.discordId)
+        val userData = interaction.user.data
+        val player = Users.getPlayer(userData.discordId)
 
         suspend fun validatePlayer(call: suspend (Player) -> Unit) {
             player?.let { call(it) } ?: interaction.respondEphemeral { content = "You need to register first!" }
         }
 
-        logger.info("Received command: /${interaction.invokedCommandName}")
+        suspend fun requirePermission(
+            permissionCheck: (Player) -> Boolean,
+            noPermissionMessage: String,
+            action: suspend (Player) -> Unit
+        ) {
+            validatePlayer { user ->
+                if (permissionCheck(user)) action(user)
+                else interaction.respondEphemeral { content = noPermissionMessage }
+            }
+        }
+
+        val validateAdmin: suspend (suspend (Player) -> Unit) -> Unit =
+            { action -> requirePermission(Player::admin, "This command is for admins only.", action) }
+        val validateBratva: suspend (suspend (Player) -> Unit) -> Unit = { action ->
+            requirePermission(
+                { it.bratva?.rank == Bratva.Boss.rank },
+                "This command is for vory only.",
+                action
+            )
+        }
+        val validateTempest: suspend (suspend (Player) -> Unit) -> Unit = { action ->
+            requirePermission(
+                { it.tempest?.rank == Tempest.Boss.rank },
+                "This command is for commanders only.",
+                action
+            )
+        }
+
+        logger.info("${userData.username} used command: /${interaction.invokedCommandName}")
 
         when (val action = Action.get(interaction.invokedCommandName)) {
             Action.REGISTER -> {
                 val (userParam) = action.params
-                val targetData = interaction.command.users[userParam.name]?.data ?: user
+                val targetData = interaction.command.users[userParam.name]?.data ?: userData
                 val target = Users.getPlayer(targetData.discordId)
                 if (target != null) {
                     interaction.respondEphemeral {
@@ -115,9 +103,6 @@ fun main() = runBlocking {
                         Users.insert {
                             it[Users.discordId] = targetData.discordId
                             it[Users.username] = targetData.username
-                            it[Users.credits] = 100
-                            it[Users.tokens] = 100
-                            it[Users.shares] = 100
                         }
                     }
                     interaction.respondEphemeral {
@@ -126,88 +111,87 @@ fun main() = runBlocking {
                 }
             }
 
-            Action.BALANCE -> {
-                validatePlayer {
+            Action.BALANCE -> validatePlayer { user ->
+                interaction.respondEphemeral {
+                    content = """Status: ${if (user.alive) "Alive" else "Dead"}
+                        |Lifestyle: ${user.lifestyle.name}
+                        |Credits: ${user.credits}
+                        |Tokens: ${user.tokens}
+                        |Shares: ${user.shares}
+                        |${user.factionString()}""".trimMargin()
+                }
+            }
+
+            Action.TRANSFER -> validatePlayer { source ->
+                val (recipientParam, accountParam, amountParam) = action.params
+                val recipientUser = interaction.command.users[recipientParam.name]!!
+                val recipient = Users.getPlayer(recipientUser.data.discordId) ?: run {
                     interaction.respondEphemeral {
-                        content = "Credits: ${it.credits}, Tokens: ${it.tokens}, Shares: ${it.shares}"
+                        content = "Recipient is not registered."
+                    }
+                    return@validatePlayer
+                }
+                val accountName = interaction.command.strings[accountParam.name]!!
+                val account = Player.Account.get(accountName)
+
+                val amount = interaction.command.integers[amountParam.name]!!.toInt()
+
+                val (playerSource, recipientSource) = when (account) {
+                    Player.Account.CREDITS -> source.credits to recipient.credits
+                    Player.Account.TOKENS -> source.tokens to recipient.tokens
+                    Player.Account.SHARES -> source.shares to recipient.shares
+                }
+
+                if (playerSource < amount) {
+                    interaction.respondEphemeral {
+                        content = "Insufficient funds."
+                    }
+                } else {
+                    val playerBalance = playerSource - amount
+                    val recipientBalance = recipientSource + amount
+                    transaction {
+                        Users.update({ Users.discordId eq source.userId }) {
+                            when (account) {
+                                Player.Account.CREDITS -> it[Users.credits] = playerBalance
+                                Player.Account.TOKENS -> it[Users.tokens] = playerBalance
+                                Player.Account.SHARES -> it[Users.shares] = playerBalance
+                            }
+                        }
+                        Users.update({ Users.discordId eq recipient.userId }) {
+                            when (account) {
+                                Player.Account.CREDITS -> it[Users.credits] = recipientBalance
+                                Player.Account.TOKENS -> it[Users.tokens] = recipientBalance
+                                Player.Account.SHARES -> it[Users.shares] = recipientBalance
+                            }
+                        }
+                    }
+                    interaction.respondEphemeral {
+                        content = "Transferred $amount ${account.name.lowercase()} to ${recipient.username}."
                     }
                 }
             }
 
-            Action.TRANSFER -> {
-                validatePlayer { source ->
-                    val (recipientParam, accountParam, amountParam) = action.params
-                    val recipientUser = interaction.command.users[recipientParam.name]!!
-                    val recipient = Users.getPlayer(recipientUser.data.discordId) ?: run {
-                        interaction.respondEphemeral {
-                            content = "Recipient is not registered."
-                        }
-                        return@validatePlayer
+            Action.LIFESTYLE -> validatePlayer { user ->
+                val (lifestyleParam) = action.params
+                val lifestyleName = interaction.command.strings[lifestyleParam.name]!!
+                val lifestyle = Player.Lifestyle.get(lifestyleName)
+                if (user.credits < lifestyle.cost) {
+                    interaction.respondEphemeral {
+                        content = "You cannot afford a ${lifestyle.name} lifestyle."
                     }
-                    val accountName = interaction.command.strings[accountParam.name]!!
-                    val account = Player.Account.get(accountName)
-
-                    val amount = interaction.command.integers[amountParam.name]!!.toInt()
-
-                    val (playerSource, recipientSource) = when (account) {
-                        Player.Account.CREDITS -> source.credits to recipient.credits
-                        Player.Account.TOKENS -> source.tokens to recipient.tokens
-                        Player.Account.SHARES -> source.shares to recipient.shares
+                } else {
+                    transaction {
+                        Users.update({ Users.discordId eq user.userId }) {
+                            it[Users.lifestyle] = lifestyle
+                        }
                     }
-
-                    if (playerSource < amount) {
-                        interaction.respondEphemeral {
-                            content = "Insufficient funds."
-                        }
-                    } else {
-                        val playerBalance = playerSource - amount
-                        val recipientBalance = recipientSource + amount
-                        transaction {
-                            Users.update({ Users.discordId eq source.userId }) {
-                                when (account) {
-                                    Player.Account.CREDITS -> it[Users.credits] = playerBalance
-                                    Player.Account.TOKENS -> it[Users.tokens] = playerBalance
-                                    Player.Account.SHARES -> it[Users.shares] = playerBalance
-                                }
-                            }
-                            Users.update({ Users.discordId eq recipient.userId }) {
-                                when (account) {
-                                    Player.Account.CREDITS -> it[Users.credits] = recipientBalance
-                                    Player.Account.TOKENS -> it[Users.tokens] = recipientBalance
-                                    Player.Account.SHARES -> it[Users.shares] = recipientBalance
-                                }
-                            }
-                        }
-                        interaction.respondEphemeral {
-                            content = "Transferred $amount ${account.name.lowercase()} to ${recipient.username}."
-                        }
+                    interaction.respondEphemeral {
+                        content = "You have adopted a ${lifestyle.name} lifestyle."
                     }
                 }
             }
 
-            Action.LIFESTYLE -> {
-                validatePlayer { target ->
-                    val (lifestyleParam) = action.params
-                    val lifestyleName = interaction.command.strings[lifestyleParam.name]!!
-                    val lifestyle = Player.Lifestyle.get(lifestyleName)
-                    if (target.credits < lifestyle.cost) {
-                        interaction.respondEphemeral {
-                            content = "You cannot afford a ${lifestyle.name} lifestyle."
-                        }
-                    } else {
-                        transaction {
-                            Users.update({ Users.discordId eq target.userId }) {
-                                it[Users.lifestyle] = lifestyle.name
-                            }
-                        }
-                        interaction.respondEphemeral {
-                            content = "You have adopted a ${lifestyle.name} lifestyle."
-                        }
-                    }
-                }
-            }
-
-            Action.ADMIN -> {
+            Action.ADMIN -> validateAdmin {
                 val (commandParam) = action.params
                 val commandName = interaction.command.strings[commandParam.name]!!
                 val command = Admin.get(commandName)
@@ -225,7 +209,7 @@ fun main() = runBlocking {
                                     } else {
                                         Player.Lifestyle.affordableLifestyle(balance)?.let { lifestyle ->
                                             balance -= lifestyle.cost
-                                            user[Users.lifestyle] = lifestyle.name
+                                            user[Users.lifestyle] = lifestyle
                                         } ?: run {
                                             user[Users.alive] = false
                                             // TODO: inform a user if they die?
@@ -239,7 +223,114 @@ fun main() = runBlocking {
                     }
                 }
             }
+
+            Action.JOIN -> validatePlayer { user ->
+                val (factionParam) = action.params
+                val factionName = interaction.command.strings[factionParam.name]!!
+                val faction = getFaction(factionName)!!
+                if (user.isMember(faction)) {
+                    interaction.respondEphemeral {
+                        content = "You are already in the $factionName."
+                    }
+                } else {
+                    transaction {
+                        Users.update({ Users.discordId eq user.userId }) {
+                            when (faction) {
+                                is Bratva -> it[Users.bratva] = faction
+                                is Local -> it[Users.local] = faction
+                                is Solarian -> it[Users.solarian] = faction
+                                is Tempest -> it[Users.tempest] = faction
+                                is Canyonheavy -> it[Users.canyonheavy] = faction
+                                is Stratemeyer -> it[Users.stratemeyer] = faction
+                            }
+                        }
+                    }
+                    interaction.respondEphemeral {
+                        content = "You are now in the $factionName."
+                    }
+                }
+            }
+
+            Action.LEAVE -> validatePlayer { user ->
+                val (factionParam) = action.params
+                val factionName = interaction.command.strings[factionParam.name]!!
+                val faction = getFaction(factionName)!!
+                if (user.isMember(faction).not()) {
+                    interaction.respondEphemeral {
+                        content = "You are not in the $factionName."
+                    }
+                } else {
+                    transaction {
+                        Users.update({ Users.discordId eq user.userId }) {
+                            when (faction) {
+                                is Bratva -> it[Users.bratva] = null
+                                is Local -> it[Users.local] = null
+                                is Solarian -> it[Users.solarian] = null
+                                is Tempest -> it[Users.tempest] = null
+                                is Canyonheavy -> it[Users.canyonheavy] = null
+                                is Stratemeyer -> it[Users.stratemeyer] = null
+                            }
+                        }
+                    }
+                    interaction.respondEphemeral {
+                        content = "You are no longer in the $factionName."
+                    }
+                }
+            }
+
+            Action.RECRUIT -> validateBratva {
+                val (userParam) = action.params
+                val targetData = interaction.command.users[userParam.name]?.data!!
+                val target = Users.getPlayer(targetData.discordId)
+                if (target == null) {
+                    interaction.respondEphemeral {
+                        content = "${targetData.username} is not registered."
+                    }
+                } else {
+                    if (target.isMember(Bratva.Member)) {
+                        interaction.respondEphemeral {
+                            content = "${targetData.username} is already a droog."
+                        }
+                    } else {
+                        transaction {
+                            Users.update({ Users.discordId eq target.userId }) {
+                                it[Users.bratva] = Bratva.Member
+                            }
+                        }
+                        interaction.respondEphemeral {
+                            content = "${targetData.username} is now a droog."
+                        }
+                    }
+                }
+            }
+
+            Action.DISCHARGE -> validateTempest {
+                val (userParam) = action.params
+                val targetData = interaction.command.users[userParam.name]?.data!!
+                val target = Users.getPlayer(targetData.discordId)
+                if (target == null) {
+                    interaction.respondEphemeral {
+                        content = "${targetData.username} is not registered."
+                    }
+                } else {
+                    if (target.isMember(Tempest.Member).not()) {
+                        interaction.respondEphemeral {
+                            content = "${targetData.username} is not an officer."
+                        }
+                    } else {
+                        transaction {
+                            Users.update({ Users.discordId eq target.userId }) {
+                                it[Users.tempest] = null
+                            }
+                        }
+                        interaction.respondEphemeral {
+                            content = "${targetData.username} is no longer an officer."
+                        }
+                    }
+                }
+            }
         }
+        syncUserStatus()
     }
 
     kord.login {
@@ -248,4 +339,36 @@ fun main() = runBlocking {
     }
 
     logger.info("Bot is shutting down.")
+}
+
+fun syncUserStatus() {
+    transaction {
+        val canyonheavyMismatches = Users.selectAll().where {
+            (Users.tokens greaterEq 1) and (Users.canyonheavy.isNull()) or
+                    ((Users.tokens eq 0) and (Users.canyonheavy.isNotNull()))
+        }.toList()
+
+        if (canyonheavyMismatches.isNotEmpty()) {
+            canyonheavyMismatches.forEach { row ->
+                Users.update({ Users.id eq row[Users.id] }) {
+                    it[canyonheavy] = if (row[Users.tokens] > 0) Canyonheavy.Member else null
+                }
+            }
+            logger.info("Synchronized ${canyonheavyMismatches.size} Canyonheavy members.")
+        }
+
+        val stratemeyerMismatches = Users.selectAll().where {
+            (Users.shares greaterEq 1) and (Users.stratemeyer.isNull()) or
+                    ((Users.shares eq 0) and (Users.stratemeyer.isNotNull()))
+        }.toList()
+
+        if (stratemeyerMismatches.isNotEmpty()) {
+            stratemeyerMismatches.forEach { row ->
+                Users.update({ Users.id eq row[Users.id] }) {
+                    it[stratemeyer] = if (row[Users.shares] > 0) Stratemeyer.Member else null
+                }
+            }
+            logger.info("Synchronized ${stratemeyerMismatches.size} Stratemeyer members.")
+        }
+    }
 }

@@ -1,4 +1,4 @@
-package gay.spiders
+package gay.spiders.data
 
 enum class Action(val description: String, val params: List<Param> = emptyList()) {
     REGISTER(
@@ -59,6 +59,52 @@ enum class Action(val description: String, val params: List<Param> = emptyList()
                 required = true
             )
         )
+    ),
+    JOIN(
+        "Join a faction.",
+        params = listOf(
+            Param(
+                name = "faction",
+                description = "Faction to join.",
+                type = Param.Type.STRING,
+                options = listOf(Local::class.simpleName, Solarian::class.simpleName, Tempest::class.simpleName),
+                required = true
+            )
+        )
+    ),
+    LEAVE(
+        "Leave a faction.",
+        params = listOf(
+            Param(
+                name = "faction",
+                description = "Faction to leave.",
+                type = Param.Type.STRING,
+                options = listOf(Local::class.simpleName, Solarian::class.simpleName),
+                required = true
+            )
+        )
+    ),
+    RECRUIT(
+        "Recruit a droog into the Bratva",
+        params = listOf(
+            Param(
+                name = "recruit",
+                description = "Recruit to add to the Bratva.",
+                type = Param.Type.USER,
+                required = true
+            ),
+        )
+    ),
+    DISCHARGE(
+        "Discharge an officer from the Tempest.",
+        params = listOf(
+            Param(
+                name = "officer",
+                description = "Officer to discharge from the Tempest.",
+                type = Param.Type.USER,
+                required = true
+            )
+        )
     );
 
     companion object {
@@ -69,7 +115,7 @@ enum class Action(val description: String, val params: List<Param> = emptyList()
         FORWARD;
 
         companion object {
-            fun get(admin: String) = Admin.entries.first { it.name.lowercase() == admin }
+            fun get(admin: String) = entries.first { it.name.lowercase() == admin }
         }
     }
 }
