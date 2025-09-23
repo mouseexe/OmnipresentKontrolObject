@@ -142,7 +142,11 @@ fun main() = runBlocking {
                     Player.Account.SHARES -> source.shares to recipient.shares
                 }
 
-                if (playerSource < amount) {
+                if (amount < 1) {
+                    interaction.respondEphemeral {
+                        content = "Transfer amount must be greater than 0."
+                    }
+                } else if (playerSource < amount) {
                     interaction.respondEphemeral {
                         content = "Insufficient funds."
                     }
