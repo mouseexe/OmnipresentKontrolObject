@@ -15,35 +15,44 @@ private data class Term(val coefficient: Int, val exponent: Int) {
         }
 
         val absCoeff = kotlin.math.abs(coefficient)
-        val coeffStr = if (absCoeff == 1 && exponent != 0) "" else absCoeff.toString()
+
+        if (exponent == 0) {
+            return "$sign$absCoeff"
+        }
+
+        val coeffStr = if (absCoeff == 1) "" else absCoeff.toString()
 
         val variableStr = when (exponent) {
-            0 -> if (absCoeff == 1 && !isFirstTerm) "1" else ""
             1 -> "x"
             else -> "x^$exponent"
         }
-
-        if (exponent == 0 && absCoeff != 1) return "$sign$absCoeff"
-        if (exponent == 0 && isFirstTerm) return "$sign$absCoeff"
-
 
         return "$sign$coeffStr$variableStr"
     }
 }
 
-// TODO: improve math problems
 fun generateIntegralProblem(): Pair<String, List<String>> {
-    val exponents = (2..7).shuffled().toMutableSet()
-    exponents.add(1)
+    val positiveExponents = (2..8).shuffled().take(Random.nextInt(1, 3))
+    val negativeExponents = (-3..-1).shuffled().take(Random.nextInt(1, 3))
+    val exponents = (positiveExponents + negativeExponents).shuffled().toMutableSet()
+
+    if (exponents.isEmpty()) {
+        exponents.add(2)
+    }
+
+    if (Random.nextBoolean()) {
+        exponents.add(1)
+    }
 
     val integratedTerms = exponents.map { exponent ->
         Term(
-            coefficient = Random.nextInt(-7, 8).let { if (it == 0) 1 else it },
+            coefficient = Random.nextInt(-15, 16).let { if (it == 0) 1 else it },
             exponent = exponent
         )
     }.sortedByDescending { it.exponent }
 
-    val problemTerms = integratedTerms.map {
+    val problemTerms = integratedTerms.mapNotNull {
+        if (it.exponent == 0) return@mapNotNull null
         Term(
             coefficient = it.coefficient * it.exponent,
             exponent = it.exponent - 1
@@ -53,35 +62,67 @@ fun generateIntegralProblem(): Pair<String, List<String>> {
     val problemString = "∫ (${problemTerms.formatToString()}) dx"
     val correctAnswer = "${integratedTerms.formatToString()} + C"
 
-    val incorrectAnswers = mutableSetOf<String>()
+    val incorrectAnswerGenerators = mutableListOf<() -> String?>()
 
-    val derivativeAsAnswer = problemTerms.map { Term(it.coefficient, it.exponent) }
-    incorrectAnswers.add("${derivativeAsAnswer.formatToString()} + C")
+    incorrectAnswerGenerators.add {
+        val twiceIntegratedTerms = integratedTerms.mapNotNull { term ->
+            val newExponent = term.exponent + 1
+            if (newExponent == 0) return@mapNotNull null
+            Term(coefficient = term.coefficient, exponent = newExponent)
+        }
+        if (twiceIntegratedTerms.size == integratedTerms.size) "${twiceIntegratedTerms.formatToString()} + C" else null
+    }
+
+    incorrectAnswerGenerators.add {
+        val derivativeTerms = problemTerms.mapNotNull { term ->
+            if (term.exponent == 0) return@mapNotNull null
+            Term(coefficient = term.coefficient * term.exponent, exponent = term.exponent - 1)
+        }.filter { it.coefficient != 0 }
+        if (derivativeTerms.isNotEmpty()) "${derivativeTerms.formatToString()} + C" else null
+    }
 
     if (integratedTerms.size > 1) {
-        val partialErrorTerms = integratedTerms.toMutableList()
-        val termToFlipIndex = Random.nextInt(1, partialErrorTerms.size)
-        val originalTerm = partialErrorTerms[termToFlipIndex]
-        partialErrorTerms[termToFlipIndex] = originalTerm.copy(coefficient = -originalTerm.coefficient)
-        incorrectAnswers.add("${partialErrorTerms.formatToString()} + C")
+        incorrectAnswerGenerators.add {
+            val coefficients = integratedTerms.map { it.coefficient }.shuffled()
+            val exponents = integratedTerms.map { it.exponent }.shuffled()
+            val shuffledTerms = coefficients.zip(exponents)
+                .map { (coeff, exp) -> Term(coeff, exp) }
+                .sortedByDescending { it.exponent }
+            "${shuffledTerms.formatToString()} + C"
+        }
     }
 
-    val coefficientErrorTerms = problemTerms.map {
-        Term(coefficient = it.coefficient, exponent = it.exponent + 1)
-    }
-    incorrectAnswers.add("${coefficientErrorTerms.formatToString()} + C")
-
-    val divisionErrorTerms = problemTerms.mapNotNull {
-        if (it.exponent == 0) return@mapNotNull Term(it.coefficient, 1)
-        if (it.coefficient % it.exponent != 0) return@mapNotNull null
-        Term(coefficient = it.coefficient / it.exponent, exponent = it.exponent + 1)
-    }
-
-    if (divisionErrorTerms.size == problemTerms.size) {
-        incorrectAnswers.add("${divisionErrorTerms.formatToString()} + C")
+    incorrectAnswerGenerators.add {
+        val numTerms = integratedTerms.size
+        val randomExponents = ((-3..-1) + (1..8)).shuffled().take(numTerms).toSet()
+        if (randomExponents.isEmpty()) return@add null
+        val randomTerms = randomExponents.map { exp ->
+            Term(coefficient = Random.nextInt(-15, 16).let { if (it == 0) 1 else it }, exponent = exp)
+        }.sortedByDescending { it.exponent }
+        "${randomTerms.formatToString()} + C"
     }
 
-    val finalAnswers = (listOf(correctAnswer) + incorrectAnswers.shuffled().take(3)).shuffled()
+    val incorrectAnswers = mutableSetOf<String>()
+    incorrectAnswerGenerators.shuffled().forEach { generator ->
+        if (incorrectAnswers.size < 4) {
+            generator()?.let { incorrectAnswer ->
+                if (incorrectAnswer != correctAnswer) {
+                    incorrectAnswers.add(incorrectAnswer)
+                }
+            }
+        }
+    }
+
+    while (incorrectAnswers.size < 4 && incorrectAnswerGenerators.isNotEmpty()) {
+        val generator = incorrectAnswerGenerators.random()
+        generator()?.let { incorrectAnswer ->
+            if (incorrectAnswer != correctAnswer) {
+                incorrectAnswers.add(incorrectAnswer)
+            }
+        }
+    }
+
+    val finalAnswers = (listOf(correctAnswer) + incorrectAnswers.toList()).shuffled()
     val correctFirstList = finalAnswers.sortedBy { it != correctAnswer }
 
     return problemString to correctFirstList
