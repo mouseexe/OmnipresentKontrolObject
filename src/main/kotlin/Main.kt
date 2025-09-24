@@ -365,7 +365,7 @@ fun main() = runBlocking {
                 } else {
                     message.edit {
                         content = blackjackString(game, "**BUSTED AT ${game.hand.calculate()}**")
-                        rematchButton()
+                        rematchButton("BUSTED")
                     }
                 }
             }
@@ -377,7 +377,7 @@ fun main() = runBlocking {
                             game,
                             "**YOU WIN AT ${game.hand.calculate()}${if (game.hand.isBlackjack()) " (BLACKJACK)" else ""} TO DEALER'S ${game.dealer.calculate()}**"
                         )
-                        rematchButton()
+                        rematchButton("YOU WON")
                     }
                 } else {
                     if (game.dealer.calculate() == game.hand.calculate() && game.dealer.isBlackjack().not()) {
@@ -386,7 +386,7 @@ fun main() = runBlocking {
                                 game,
                                 "**TIE AT ${game.hand.calculate()} TO DEALER'S ${game.dealer.calculate()}**"
                             )
-                            rematchButton()
+                            rematchButton("TIE")
                         }
                     } else {
                         message.edit {
@@ -394,7 +394,7 @@ fun main() = runBlocking {
                                 game,
                                 "**DEALER WINS AT ${game.dealer.calculate()}${if (game.dealer.isBlackjack()) " (BLACKJACK)" else ""} TO YOUR ${game.hand.calculate()}**"
                             )
-                            rematchButton()
+                            rematchButton("YOU LOST")
                         }
                     }
                 }
