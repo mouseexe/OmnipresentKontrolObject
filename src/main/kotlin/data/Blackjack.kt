@@ -7,8 +7,6 @@ import gay.spiders.popLast
 
 enum class Suit(val symbol: String) {
     CLUBS("♣\uFE0F"), DIAMONDS("♦\uFE0F"), HEARTS("♥\uFE0F"), SPADES("♠\uFE0F");
-
-    val displayName = this.name.lowercase().replaceFirstChar { it.uppercase() }
 }
 
 enum class Rank(val value: Int, val symbol: String) {
@@ -25,12 +23,9 @@ enum class Rank(val value: Int, val symbol: String) {
     QUEEN(10, "Q"),
     KING(10, "K"),
     ACE(11, "A");
-
-    val displayName = this.name.lowercase().replaceFirstChar { it.uppercase() }
 }
 
 data class Card(val rank: Rank, val suit: Suit) {
-    val displayName = "${rank.displayName} of ${suit.displayName}"
     val symbol = "**${rank.symbol}**${suit.symbol}"
 }
 
