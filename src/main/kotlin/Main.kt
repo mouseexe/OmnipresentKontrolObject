@@ -10,6 +10,7 @@ import dev.kord.core.event.gateway.ReadyEvent
 import dev.kord.core.event.interaction.ButtonInteractionCreateEvent
 import dev.kord.core.event.interaction.ChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.InteractionCreateEvent
+import dev.kord.core.event.interaction.SelectMenuInteractionCreateEvent
 import dev.kord.core.on
 import dev.kord.gateway.Intent
 import dev.kord.gateway.PrivilegedIntent
@@ -347,17 +348,26 @@ fun main() = runBlocking {
                     blackjackButtons()
                 }
             }
+
+            Action.MINE -> validatePlayer {
+                val (problem, answers) = generateIntegralProblem()
+
+                interaction.respondEphemeral {
+                    content = "Solve the following integral:\n`$problem`"
+                    mathAnswers(answers)
+                }
+            }
         }
         syncUserStatus()
     }
 
     kord.on<ButtonInteractionCreateEvent> {
         val message = interaction.deferEphemeralMessageUpdate()
-        val game = games[interaction.user.id.value.toLong()]!!
+        val game = games[interaction.user.id.value.toLong()]
 
         when (interaction.componentId) {
             "hit" -> {
-                if (game.hit()) {
+                if (game!!.hit()) {
                     message.edit {
                         content = blackjackString(game)
                         blackjackButtons()
@@ -371,7 +381,7 @@ fun main() = runBlocking {
             }
 
             "stand" -> {
-                if (game.stand()) {
+                if (game!!.stand()) {
                     message.edit {
                         content = blackjackString(
                             game,
@@ -380,7 +390,9 @@ fun main() = runBlocking {
                         rematchButton("YOU WON")
                     }
                 } else {
-                    if (game.dealer.calculate() == game.hand.calculate() && game.dealer.isBlackjack().not()) {
+                    if ((game.dealer.calculate() == game.hand.calculate() && game.dealer.isBlackjack()
+                            .not()) || game.hand.isBlackjack()
+                    ) {
                         message.edit {
                             content = blackjackString(
                                 game,
@@ -401,11 +413,31 @@ fun main() = runBlocking {
             }
 
             "rematch" -> {
-                game.reset()
+                game!!.reset()
                 game.deal()
                 message.edit {
                     content = blackjackString(game)
                     blackjackButtons()
+                }
+            }
+        }
+    }
+
+    kord.on<SelectMenuInteractionCreateEvent> {
+        if (interaction.componentId == "mine_answer_select") {
+            val (problem, answers) = generateIntegralProblem()
+            val message = interaction.deferEphemeralMessageUpdate()
+            val isCorrect = interaction.values.first() == "correct"
+
+            if (isCorrect) {
+                message.edit {
+                    content = "**CORRECT**\n\nSolve the following integral:\n`$problem`"
+                    mathAnswers(answers)
+                }
+            } else {
+                message.edit {
+                    content = "**INCORRECT**\n\nSolve the following integral:\n`$problem`"
+                    mathAnswers(answers)
                 }
             }
         }
