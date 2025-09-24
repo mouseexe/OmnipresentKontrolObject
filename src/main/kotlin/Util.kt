@@ -1,7 +1,10 @@
 package gay.spiders
 
+import dev.kord.common.entity.ButtonStyle
 import dev.kord.core.cache.data.UserData
 import dev.kord.rest.builder.interaction.*
+import dev.kord.rest.builder.message.MessageBuilder
+import dev.kord.rest.builder.message.actionRow
 import gay.spiders.data.Param
 import org.jetbrains.exposed.sql.Table
 import kotlin.reflect.KClass
@@ -35,3 +38,23 @@ inline fun <reified T : Enum<T>> Table.pgEnum(enumClass: KClass<T>) = customEnum
     fromDb = { value -> enumClass.java.enumConstants.first { it.name == value } },
     toDb = { it.name }
 )
+
+fun <T> MutableList<T>.popLast(n: Int): List<T> {
+    val count = n.coerceIn(0, this.size)
+    if (count == 0) return emptyList()
+    val fromIndex = this.size - count
+    val takenElements = this.subList(fromIndex, this.size).toList()
+    this.subList(fromIndex, this.size).clear()
+
+    return takenElements
+}
+
+fun MessageBuilder.rematchButton() {
+    actionRow {
+        interactionButton(
+            style = ButtonStyle.Primary, customId = "rematch"
+        ) {
+            label = "Play again"
+        }
+    }
+}

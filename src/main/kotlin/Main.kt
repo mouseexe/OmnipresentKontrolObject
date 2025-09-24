@@ -4,8 +4,10 @@ import dev.kord.common.annotation.KordExperimental
 import dev.kord.common.entity.Snowflake
 import dev.kord.core.Kord
 import dev.kord.core.behavior.interaction.respondEphemeral
+import dev.kord.core.behavior.interaction.response.edit
 import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.event.gateway.ReadyEvent
+import dev.kord.core.event.interaction.ButtonInteractionCreateEvent
 import dev.kord.core.event.interaction.ChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.InteractionCreateEvent
 import dev.kord.core.on
@@ -36,6 +38,8 @@ fun main() = runBlocking {
         return@runBlocking
     }
     val kord = Kord(token)
+
+    val games = mutableMapOf<Long, Game>()
 
     kord.on<ReadyEvent> {
         logger.info("Logged in as ${self.tag}")
@@ -333,8 +337,78 @@ fun main() = runBlocking {
                     }
                 }
             }
+
+            Action.GAMBLE -> validatePlayer { user ->
+                games[user.userId] = Game.newGame()
+                val game = games[user.userId]!!
+                game.deal()
+                interaction.respondEphemeral {
+                    content = blackjackString(game)
+                    blackjackButtons()
+                }
+            }
         }
         syncUserStatus()
+    }
+
+    kord.on<ButtonInteractionCreateEvent> {
+        val message = interaction.deferEphemeralMessageUpdate()
+        val game = games[interaction.user.id.value.toLong()]!!
+
+        when (interaction.componentId) {
+            "hit" -> {
+                if (game.hit()) {
+                    message.edit {
+                        content = blackjackString(game)
+                        blackjackButtons()
+                    }
+                } else {
+                    message.edit {
+                        content = blackjackString(game, "**BUSTED AT ${game.hand.calculate()}**")
+                        rematchButton()
+                    }
+                }
+            }
+
+            "stand" -> {
+                if (game.stand()) {
+                    message.edit {
+                        content = blackjackString(
+                            game,
+                            "**YOU WIN AT ${game.hand.calculate()}${if (game.hand.isBlackjack()) " (BLACKJACK)" else ""} TO DEALER'S ${game.dealer.calculate()}**"
+                        )
+                        rematchButton()
+                    }
+                } else {
+                    if (game.dealer.calculate() == game.hand.calculate() && game.dealer.isBlackjack().not()) {
+                        message.edit {
+                            content = blackjackString(
+                                game,
+                                "**TIE AT ${game.hand.calculate()} TO DEALER'S ${game.dealer.calculate()}**"
+                            )
+                            rematchButton()
+                        }
+                    } else {
+                        message.edit {
+                            content = blackjackString(
+                                game,
+                                "**DEALER WINS AT ${game.dealer.calculate()}${if (game.dealer.isBlackjack()) " (BLACKJACK)" else ""} TO YOUR ${game.hand.calculate()}**"
+                            )
+                            rematchButton()
+                        }
+                    }
+                }
+            }
+
+            "rematch" -> {
+                game.reset()
+                game.deal()
+                message.edit {
+                    content = blackjackString(game)
+                    blackjackButtons()
+                }
+            }
+        }
     }
 
     kord.login {
