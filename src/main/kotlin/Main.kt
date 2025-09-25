@@ -20,6 +20,8 @@ import gay.spiders.data.Users.getPlayer
 import gay.spiders.data.Users.toPlayer
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.sql.*
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.minus
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.plus
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 
@@ -340,12 +342,18 @@ fun main() = runBlocking {
             }
 
             Action.GAMBLE -> validatePlayer { user ->
-                games[user.userId] = Game.newGame()
-                val game = games[user.userId]!!
-                game.deal()
-                interaction.respondEphemeral {
-                    content = blackjackString(game)
-                    blackjackButtons()
+                if (user.credits >= 5) {
+                    games[user.userId] = Game.newGame()
+                    val game = games[user.userId]!!
+                    game.deal()
+                    interaction.respondEphemeral {
+                        content = blackjackString(game)
+                        blackjackButtons()
+                    }
+                } else {
+                    interaction.respondEphemeral {
+                        content = "Insufficient funds. Entry is 5 credits."
+                    }
                 }
             }
 
@@ -364,6 +372,9 @@ fun main() = runBlocking {
     kord.on<ButtonInteractionCreateEvent> {
         val message = interaction.deferEphemeralMessageUpdate()
         val game = games[interaction.user.id.value.toLong()]
+
+        val userData = interaction.user.data
+        val player = Users.getPlayer(userData.discordId)!!
 
         when (interaction.componentId) {
             "hit" -> {
@@ -385,9 +396,14 @@ fun main() = runBlocking {
                     message.edit {
                         content = blackjackString(
                             game,
-                            "**YOU WIN AT ${game.hand.calculate()}${if (game.hand.isBlackjack()) " (BLACKJACK)" else ""} TO DEALER'S ${game.dealer.calculate()}**"
+                            "**YOU WIN AT ${game.hand.calculate()}${if (game.hand.isBlackjack()) " (BLACKJACK)" else ""} TO DEALER'S ${game.dealer.calculate()}**\n*10 credits awarded*"
                         )
                         rematchButton("YOU WON")
+                    }
+                    transaction {
+                        Users.update({ Users.discordId eq player.userId }) {
+                            it[Users.credits] = Users.credits.plus(10)
+                        }
                     }
                 } else {
                     if ((game.dealer.calculate() == game.hand.calculate() && game.dealer.isBlackjack()
@@ -396,9 +412,14 @@ fun main() = runBlocking {
                         message.edit {
                             content = blackjackString(
                                 game,
-                                "**TIE AT ${game.hand.calculate()} TO DEALER'S ${game.dealer.calculate()}**"
+                                "**TIE AT ${game.hand.calculate()} TO DEALER'S ${game.dealer.calculate()}**\n*5 credits refunded*"
                             )
                             rematchButton("TIE")
+                        }
+                        transaction {
+                            Users.update({ Users.discordId eq player.userId }) {
+                                it[Users.credits] = Users.credits.plus(5)
+                            }
                         }
                     } else {
                         message.edit {
@@ -413,11 +434,22 @@ fun main() = runBlocking {
             }
 
             "rematch" -> {
-                game!!.reset()
-                game.deal()
-                message.edit {
-                    content = blackjackString(game)
-                    blackjackButtons()
+                if (player.credits >= 5) {
+                    game!!.reset()
+                    game.deal()
+                    message.edit {
+                        content = blackjackString(game)
+                        blackjackButtons()
+                    }
+                    transaction {
+                        Users.update({ Users.discordId eq player.userId }) {
+                            it[Users.credits] = Users.credits.minus(5)
+                        }
+                    }
+                } else {
+                    message.edit {
+                        content = "Insufficient funds. Entry is 5 credits."
+                    }
                 }
             }
         }
@@ -430,6 +462,11 @@ fun main() = runBlocking {
             val isCorrect = interaction.values.first() == "correct"
 
             if (isCorrect) {
+                transaction {
+                    Users.update({ Users.discordId eq interaction.user.data.discordId }) {
+                        it[Users.tokens] = Users.tokens.plus(1)
+                    }
+                }
                 message.edit {
                     content = "**CORRECT**\n\nSolve the following integral:\n`$problem`"
                     mathAnswers(answers)
