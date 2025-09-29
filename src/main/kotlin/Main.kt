@@ -2,15 +2,15 @@ package gay.spiders
 
 import dev.kord.common.annotation.KordExperimental
 import dev.kord.common.entity.Snowflake
+import dev.kord.common.entity.TextInputStyle
 import dev.kord.core.Kord
+import dev.kord.core.behavior.interaction.modal
 import dev.kord.core.behavior.interaction.respondEphemeral
-import dev.kord.core.behavior.interaction.response.edit
 import dev.kord.core.behavior.interaction.response.respond
 import dev.kord.core.event.gateway.ReadyEvent
-import dev.kord.core.event.interaction.ButtonInteractionCreateEvent
 import dev.kord.core.event.interaction.ChatInputCommandInteractionCreateEvent
 import dev.kord.core.event.interaction.InteractionCreateEvent
-import dev.kord.core.event.interaction.SelectMenuInteractionCreateEvent
+import dev.kord.core.event.interaction.ModalSubmitInteractionCreateEvent
 import dev.kord.core.on
 import dev.kord.gateway.Intent
 import dev.kord.gateway.PrivilegedIntent
@@ -20,7 +20,6 @@ import gay.spiders.data.Users.getPlayer
 import gay.spiders.data.Users.toPlayer
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.sql.*
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.minus
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.plus
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
@@ -341,140 +340,149 @@ fun main() = runBlocking {
                 }
             }
 
-            Action.GAMBLE -> validatePlayer { user ->
-                if (user.credits >= 5) {
-                    games[user.userId] = Game.newGame()
-                    val game = games[user.userId]!!
-                    game.deal()
-                    interaction.respondEphemeral {
-                        content = blackjackString(game)
-                        blackjackButtons()
-                    }
-                } else {
-                    interaction.respondEphemeral {
-                        content = "Insufficient funds. Entry is 5 credits."
-                    }
-                }
-            }
-
             Action.MINE -> validatePlayer {
-                val (problem, answers) = generateIntegralProblem()
-
-                interaction.respondEphemeral {
-                    content = "Solve the following integral:\n`$problem`"
-                    mathAnswers(answers)
+                val (problem, answer) = getProblem()
+                logger.info(" ### Problem answer: $answer")
+                interaction.modal("Canyonheavy Proof of Work", answer.toString()) {
+                    actionRow {
+                        textInput(TextInputStyle.Paragraph, "problem-display", "Source matrices:") {
+                            value = problem
+                            required = false
+                        }
+                    }
+                    actionRow {
+                        textInput(TextInputStyle.Short, "pow-answer", "Sum of product matrix") {
+                            placeholder = "Sum"
+                            required = true
+                        }
+                    }
                 }
             }
+
+//            Action.GAMBLE -> validatePlayer { user ->
+//                if (user.credits >= 5) {
+//                    games[user.userId] = Game.newGame()
+//                    val game = games[user.userId]!!
+//                    game.deal()
+//                    interaction.respondEphemeral {
+//                        content = blackjackString(game)
+//                        blackjackButtons()
+//                    }
+//                } else {
+//                    interaction.respondEphemeral {
+//                        content = "Insufficient funds. Entry is 5 credits."
+//                    }
+//                }
+//            }
         }
         syncUserStatus()
     }
 
-    kord.on<ButtonInteractionCreateEvent> {
-        val message = interaction.deferEphemeralMessageUpdate()
-        val game = games[interaction.user.id.value.toLong()]
+//    kord.on<ButtonInteractionCreateEvent> {
+//        val message = interaction.deferEphemeralMessageUpdate()
+//        val game = games[interaction.user.id.value.toLong()]
+//
+//        val userData = interaction.user.data
+//        val player = Users.getPlayer(userData.discordId)!!
+//
+//        when (interaction.componentId) {
+//            "hit" -> {
+//                if (game!!.hit()) {
+//                    message.edit {
+//                        content = blackjackString(game)
+//                        blackjackButtons()
+//                    }
+//                } else {
+//                    message.edit {
+//                        content = blackjackString(game, "**BUSTED AT ${game.hand.calculate()}**")
+//                        rematchButton("BUSTED")
+//                    }
+//                }
+//            }
+//
+//            "stand" -> {
+//                if (game!!.stand()) {
+//                    message.edit {
+//                        content = blackjackString(
+//                            game,
+//                            "**YOU WIN AT ${game.hand.calculate()}${if (game.hand.isBlackjack()) " (BLACKJACK)" else ""} TO DEALER'S ${game.dealer.calculate()}**\n*10 credits awarded*"
+//                        )
+//                        rematchButton("YOU WON")
+//                    }
+//                    transaction {
+//                        Users.update({ Users.discordId eq player.userId }) {
+//                            it[Users.credits] = Users.credits.plus(10)
+//                        }
+//                    }
+//                } else {
+//                    if ((game.dealer.calculate() == game.hand.calculate() && game.dealer.isBlackjack()
+//                            .not()) || game.hand.isBlackjack()
+//                    ) {
+//                        message.edit {
+//                            content = blackjackString(
+//                                game,
+//                                "**TIE AT ${game.hand.calculate()} TO DEALER'S ${game.dealer.calculate()}**\n*5 credits refunded*"
+//                            )
+//                            rematchButton("TIE")
+//                        }
+//                        transaction {
+//                            Users.update({ Users.discordId eq player.userId }) {
+//                                it[Users.credits] = Users.credits.plus(5)
+//                            }
+//                        }
+//                    } else {
+//                        message.edit {
+//                            content = blackjackString(
+//                                game,
+//                                "**DEALER WINS AT ${game.dealer.calculate()}${if (game.dealer.isBlackjack()) " (BLACKJACK)" else ""} TO YOUR ${game.hand.calculate()}**"
+//                            )
+//                            rematchButton("YOU LOST")
+//                        }
+//                    }
+//                }
+//            }
+//
+//            "rematch" -> {
+//                if (player.credits >= 5) {
+//                    game!!.reset()
+//                    game.deal()
+//                    message.edit {
+//                        content = blackjackString(game)
+//                        blackjackButtons()
+//                    }
+//                    transaction {
+//                        Users.update({ Users.discordId eq player.userId }) {
+//                            it[Users.credits] = Users.credits.minus(5)
+//                        }
+//                    }
+//                } else {
+//                    message.edit {
+//                        content = "Insufficient funds. Entry is 5 credits."
+//                    }
+//                }
+//            }
+//        }
+//    }
 
-        val userData = interaction.user.data
-        val player = Users.getPlayer(userData.discordId)!!
+    kord.on<ModalSubmitInteractionCreateEvent> {
+        val correctAnswer = interaction.modalId
+        val userAnswer = interaction.textInputs["pow-answer"]?.value
 
-        when (interaction.componentId) {
-            "hit" -> {
-                if (game!!.hit()) {
-                    message.edit {
-                        content = blackjackString(game)
-                        blackjackButtons()
-                    }
-                } else {
-                    message.edit {
-                        content = blackjackString(game, "**BUSTED AT ${game.hand.calculate()}**")
-                        rematchButton("BUSTED")
-                    }
-                }
-            }
-
-            "stand" -> {
-                if (game!!.stand()) {
-                    message.edit {
-                        content = blackjackString(
-                            game,
-                            "**YOU WIN AT ${game.hand.calculate()}${if (game.hand.isBlackjack()) " (BLACKJACK)" else ""} TO DEALER'S ${game.dealer.calculate()}**\n*10 credits awarded*"
-                        )
-                        rematchButton("YOU WON")
-                    }
-                    transaction {
-                        Users.update({ Users.discordId eq player.userId }) {
-                            it[Users.credits] = Users.credits.plus(10)
-                        }
-                    }
-                } else {
-                    if ((game.dealer.calculate() == game.hand.calculate() && game.dealer.isBlackjack()
-                            .not()) || game.hand.isBlackjack()
-                    ) {
-                        message.edit {
-                            content = blackjackString(
-                                game,
-                                "**TIE AT ${game.hand.calculate()} TO DEALER'S ${game.dealer.calculate()}**\n*5 credits refunded*"
-                            )
-                            rematchButton("TIE")
-                        }
-                        transaction {
-                            Users.update({ Users.discordId eq player.userId }) {
-                                it[Users.credits] = Users.credits.plus(5)
-                            }
-                        }
-                    } else {
-                        message.edit {
-                            content = blackjackString(
-                                game,
-                                "**DEALER WINS AT ${game.dealer.calculate()}${if (game.dealer.isBlackjack()) " (BLACKJACK)" else ""} TO YOUR ${game.hand.calculate()}**"
-                            )
-                            rematchButton("YOU LOST")
-                        }
-                    }
-                }
-            }
-
-            "rematch" -> {
-                if (player.credits >= 5) {
-                    game!!.reset()
-                    game.deal()
-                    message.edit {
-                        content = blackjackString(game)
-                        blackjackButtons()
-                    }
-                    transaction {
-                        Users.update({ Users.discordId eq player.userId }) {
-                            it[Users.credits] = Users.credits.minus(5)
-                        }
-                    }
-                } else {
-                    message.edit {
-                        content = "Insufficient funds. Entry is 5 credits."
-                    }
-                }
-            }
-        }
-    }
-
-    kord.on<SelectMenuInteractionCreateEvent> {
-        if (interaction.componentId == "mine_answer_select") {
-            val (problem, answers) = generateIntegralProblem()
-            val message = interaction.deferEphemeralMessageUpdate()
-            val isCorrect = interaction.values.first() == "correct"
-
-            if (isCorrect) {
+        if (userAnswer != null) {
+            val userData = interaction.user.data
+            val player = Users.getPlayer(userData.discordId)!!
+            if (userAnswer == correctAnswer) {
                 transaction {
-                    Users.update({ Users.discordId eq interaction.user.data.discordId }) {
-                        it[Users.tokens] = Users.tokens.plus(1)
+                    Users.update({ Users.discordId eq player.userId }) {
+                        it[tokens] = tokens.plus(1)
                     }
                 }
-                message.edit {
-                    content = "**CORRECT**\n\nSolve the following integral:\n`$problem`"
-                    mathAnswers(answers)
+                interaction.respondEphemeral {
+                    content = "`<WORK VERIFIED. 1 TOKEN TRANSFERRED/>`"
                 }
             } else {
-                message.edit {
-                    content = "**INCORRECT**\n\nSolve the following integral:\n`$problem`"
-                    mathAnswers(answers)
+                interaction.respondEphemeral {
+                    content = "`<WORK NOT VERIFIED. INCORRECT ANSWER/>`"
                 }
             }
         }

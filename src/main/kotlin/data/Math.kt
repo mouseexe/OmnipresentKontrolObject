@@ -1,146 +1,103 @@
 package gay.spiders.data
 
-import dev.kord.rest.builder.component.option
-import dev.kord.rest.builder.message.MessageBuilder
-import dev.kord.rest.builder.message.actionRow
-import kotlin.random.Random
+import kotlin.math.sqrt
 
-private data class Term(val coefficient: Int, val exponent: Int) {
-    fun format(isFirstTerm: Boolean = false): String {
-        val sign = when {
-            isFirstTerm && coefficient < 0 -> "-"
-            isFirstTerm -> ""
-            coefficient < 0 -> " - "
-            else -> " + "
-        }
+fun getPrimeMatrix(isHorizontal: Boolean = true): Array<IntArray> {
+    val primesInRange = (100..1000).filter { isPrime(it) }
+    val primes = primesInRange.shuffled().take(6)
 
-        val absCoeff = kotlin.math.abs(coefficient)
-
-        if (exponent == 0) {
-            return "$sign$absCoeff"
-        }
-
-        val coeffStr = if (absCoeff == 1) "" else absCoeff.toString()
-
-        val variableStr = when (exponent) {
-            1 -> "x"
-            else -> "x^$exponent"
-        }
-
-        return "$sign$coeffStr$variableStr"
+    val rows: Int
+    val cols: Int
+    if (isHorizontal) {
+        rows = 2
+        cols = 3
+    } else {
+        rows = 3
+        cols = 2
     }
+
+    val matrix = Array(rows) { IntArray(cols) }
+    for (i in 0 until rows) {
+        for (j in 0 until cols) {
+            matrix[i][j] = primes[i * cols + j]
+        }
+    }
+    return matrix
 }
 
-fun generateIntegralProblem(): Pair<String, List<String>> {
-    val positiveExponents = (2..8).shuffled().take(Random.nextInt(1, 3))
-    val negativeExponents = (-3..-1).shuffled().take(Random.nextInt(1, 3))
-    val exponents = (positiveExponents + negativeExponents).shuffled().toMutableSet()
+fun isPrime(n: Int): Boolean {
+    if (n <= 1) return false
+    if (n % 2 == 0) return n == 2
+    for (i in 3..sqrt(n.toDouble()).toInt() step 2) {
+        if (n % i == 0) return false
+    }
+    return true
+}
 
-    if (exponents.isEmpty()) {
-        exponents.add(2)
+fun matrixMultiply(a: Array<IntArray>, b: Array<IntArray>): Array<IntArray> {
+    val rowsA = a.size
+    val colsA = a[0].size
+    val rowsB = b.size
+    val colsB = b[0].size
+
+    if (colsA != rowsB) {
+        throw IllegalArgumentException("Matrix dimensions are not compatible for multiplication: (${rowsA}x${colsA}) * (${rowsB}x${colsB})")
     }
 
-    if (Random.nextBoolean()) {
-        exponents.add(1)
-    }
+    val result = Array(rowsA) { IntArray(colsB) }
 
-    val integratedTerms = exponents.map { exponent ->
-        Term(
-            coefficient = Random.nextInt(-15, 16).let { if (it == 0) 1 else it },
-            exponent = exponent
-        )
-    }.sortedByDescending { it.exponent }
-
-    val problemTerms = integratedTerms.mapNotNull {
-        if (it.exponent == 0) return@mapNotNull null
-        Term(
-            coefficient = it.coefficient * it.exponent,
-            exponent = it.exponent - 1
-        )
-    }
-
-    val problemString = "∫ (${problemTerms.formatToString()}) dx"
-    val correctAnswer = "${integratedTerms.formatToString()} + C"
-
-    val incorrectAnswerGenerators = mutableListOf<() -> String?>()
-
-    incorrectAnswerGenerators.add {
-        val twiceIntegratedTerms = integratedTerms.mapNotNull { term ->
-            val newExponent = term.exponent + 1
-            if (newExponent == 0) return@mapNotNull null
-            Term(coefficient = term.coefficient, exponent = newExponent)
-        }
-        if (twiceIntegratedTerms.size == integratedTerms.size) "${twiceIntegratedTerms.formatToString()} + C" else null
-    }
-
-    incorrectAnswerGenerators.add {
-        val derivativeTerms = problemTerms.mapNotNull { term ->
-            if (term.exponent == 0) return@mapNotNull null
-            Term(coefficient = term.coefficient * term.exponent, exponent = term.exponent - 1)
-        }.filter { it.coefficient != 0 }
-        if (derivativeTerms.isNotEmpty()) "${derivativeTerms.formatToString()} + C" else null
-    }
-
-    if (integratedTerms.size > 1) {
-        incorrectAnswerGenerators.add {
-            val coefficients = integratedTerms.map { it.coefficient }.shuffled()
-            val exponents = integratedTerms.map { it.exponent }.shuffled()
-            val shuffledTerms = coefficients.zip(exponents)
-                .map { (coeff, exp) -> Term(coeff, exp) }
-                .sortedByDescending { it.exponent }
-            "${shuffledTerms.formatToString()} + C"
-        }
-    }
-
-    incorrectAnswerGenerators.add {
-        val numTerms = integratedTerms.size
-        val randomExponents = ((-3..-1) + (1..8)).shuffled().take(numTerms).toSet()
-        if (randomExponents.isEmpty()) return@add null
-        val randomTerms = randomExponents.map { exp ->
-            Term(coefficient = Random.nextInt(-15, 16).let { if (it == 0) 1 else it }, exponent = exp)
-        }.sortedByDescending { it.exponent }
-        "${randomTerms.formatToString()} + C"
-    }
-
-    val incorrectAnswers = mutableSetOf<String>()
-    incorrectAnswerGenerators.shuffled().forEach { generator ->
-        if (incorrectAnswers.size < 4) {
-            generator()?.let { incorrectAnswer ->
-                if (incorrectAnswer != correctAnswer) {
-                    incorrectAnswers.add(incorrectAnswer)
-                }
+    for (i in 0 until rowsA) {
+        for (j in 0 until colsB) {
+            for (k in 0 until colsA) {
+                result[i][j] += a[i][k] * b[k][j]
             }
         }
     }
 
-    while (incorrectAnswers.size < 4 && incorrectAnswerGenerators.isNotEmpty()) {
-        val generator = incorrectAnswerGenerators.random()
-        generator()?.let { incorrectAnswer ->
-            if (incorrectAnswer != correctAnswer) {
-                incorrectAnswers.add(incorrectAnswer)
-            }
-        }
-    }
-
-    val finalAnswers = (listOf(correctAnswer) + incorrectAnswers.toList()).shuffled()
-    val correctFirstList = finalAnswers.sortedBy { it != correctAnswer }
-
-    return problemString to correctFirstList
+    return result
 }
 
-private fun List<Term>.formatToString(): String {
-    if (this.isEmpty()) return "0"
-    return this.mapIndexed { index, term -> term.format(isFirstTerm = index == 0) }.joinToString("")
+fun sumMatrix(matrix: Array<IntArray>): Int {
+    return matrix.sumOf { it.sum() }
 }
 
-fun MessageBuilder.mathAnswers(answers: List<String>) {
-    actionRow {
-        val shuffledAnswers = answers.mapIndexed { index, answer -> answer to (index == 0) }.shuffled()
+fun prettyPrintMatrices(a: Array<IntArray>, b: Array<IntArray>? = null): String {
+    val allNumbers = a.flatMap { it.asIterable() } + (b?.flatMap { it.asIterable() } ?: emptyList())
+    val maxWidth = allNumbers.maxOrNull()?.toString()?.length ?: 0
 
-        stringSelect("mine_answer_select") {
-            shuffledAnswers.forEachIndexed { index, (answerText, isCorrect) ->
-                option(answerText, if (isCorrect) "correct" else "incorrect$index")
-            }
-        }
+    val linesA = getPaddedLines(a, maxWidth)
+    val widthA = linesA.firstOrNull()?.length ?: 0
+
+    if (b == null) {
+        return linesA.joinToString("\n")
     }
+
+    val linesB = getPaddedLines(b, maxWidth)
+
+    val numRows = maxOf(a.size, b.size)
+    val middleRow = (numRows - 1) / 2
+
+    val sb = StringBuilder()
+    for (i in 0 until numRows) {
+        val lineA = linesA.getOrNull(i) ?: "".padEnd(widthA)
+        val lineB = linesB.getOrNull(i) ?: ""
+        val separator = if (i == middleRow) "  x  " else "     "
+
+        sb.append(lineA).append(separator).append(lineB).append("\n")
+    }
+    return sb.toString()
+}
+
+private fun getPaddedLines(matrix: Array<IntArray>, maxWidth: Int): List<String> {
+    if (matrix.isEmpty() || matrix[0].isEmpty()) return emptyList()
+    return matrix.map { row ->
+        val content = row.joinToString(", ") { it.toString().padStart(maxWidth, ' ') }
+        "[ $content ]"
+    }
+}
+
+fun getProblem(): Pair<String, Int> {
+    val matrixA = getPrimeMatrix(false)
+    val matrixB = getPrimeMatrix(true)
+    return Pair(prettyPrintMatrices(matrixA, matrixB), sumMatrix(matrixMultiply(matrixA, matrixB)))
 }

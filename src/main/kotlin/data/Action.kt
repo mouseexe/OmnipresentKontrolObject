@@ -106,8 +106,9 @@ enum class Action(val description: String, val params: List<Param> = emptyList()
             )
         )
     ),
-    GAMBLE("Let's go gambling"),
-    MINE("Mine for tokens");
+
+    //    GAMBLE("Let's go gambling"),
+    MINE("Demonstrate proof of work for Canyonheavy tokens");
 
     companion object {
         fun get(action: String) = entries.first { it.name.lowercase() == action }
